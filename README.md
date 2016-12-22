@@ -1,1 +1,1 @@
-HUBCHAR test task
+HUBCHAT test task
