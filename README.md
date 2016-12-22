@@ -1,0 +1,1 @@
+HUBCHAR test task
