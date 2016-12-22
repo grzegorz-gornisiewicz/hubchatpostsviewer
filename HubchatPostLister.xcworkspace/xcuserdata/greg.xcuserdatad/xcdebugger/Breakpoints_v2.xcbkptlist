@@ -10,11 +10,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "HubchatPostLister/HubchatPostsTVC.swift"
-            timestampString = "504108189.004581"
+            timestampString = "504119516.926772"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "58"
-            endingLineNumber = "58"
+            startingLineNumber = "63"
+            endingLineNumber = "63"
             landmarkName = "downloadForum()"
             landmarkType = "7">
          </BreakpointContent>

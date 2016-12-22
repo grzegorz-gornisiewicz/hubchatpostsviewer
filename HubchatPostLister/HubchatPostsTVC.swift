@@ -11,9 +11,11 @@ import SnapKit
 import Alamofire
 import AlamofireImage
 
-enum TargetImage:Int {
-    case headerImage = 0
-    case logoImage
+enum ViewsTags:Int {
+    case Root = 100
+    case Avatar
+    case Username
+    case RawContent
 }
 
 class HubchatPostsTVC: UITableViewController {
@@ -41,9 +43,12 @@ class HubchatPostsTVC: UITableViewController {
         super.viewWillAppear(animated)
         
         self.tableView.backgroundColor = UIColor.white
+        
+        if self.refreshControl != nil {
+            self.refreshControl?.addTarget(self, action: #selector(downloadPosts), for: .valueChanged)
+        }
 
         downloadForum()
-        downloadPosts()
     }
 
     func downloadForum() {
@@ -71,6 +76,8 @@ class HubchatPostsTVC: UITableViewController {
                             imageContainer.addSubview(imageView)
 
                             self.navigationController?.view.addSubview(imageContainer)
+
+                            self.downloadPosts()
                         }
                     }
                 }
@@ -82,6 +89,9 @@ class HubchatPostsTVC: UITableViewController {
         DispatchQueue.main.async {
             Alamofire.request("https://api.hubchat.com/v1/forum/photography/post").responseJSON { response in
                 if let JSON = response.result.value as? NSDictionary {
+                    if self.refreshControl != nil && self.refreshControl!.isRefreshing {
+                        self.refreshControl?.endRefreshing()
+                    }
                     self.posts = JSON.value(forKey: "posts") as! [Any]
                     self.tableView.reloadData()
                 }
@@ -130,8 +140,6 @@ class HubchatPostsTVC: UITableViewController {
 
         logoContainer.addSubview(logoImageView)
         logoImageView.snp.makeConstraints { (make) -> Void in
-            make.centerY.equalTo(logoContainer)
-            make.size.equalTo(64.0)
             make.edges.equalTo(logoContainer).inset(UIEdgeInsetsMake(4, 4, 40, 4))
         }
 
@@ -165,12 +173,81 @@ class HubchatPostsTVC: UITableViewController {
         return headerView
     }
 
+    func prepareCellView(row:Int) -> UIView {
+        let frame:CGRect = CGRect(x: 0, y: 0, width: self.tableView.frame.size.width, height: 80.0)
+        let container:UIView = UIView(frame: frame)
+        /*
+         Post text
+         User (avatar, username)
+         Images (from entities)
+         Upvotes
+         */
+        if let post = posts[row] as? NSDictionary {
+            let avatarImageView:UIImageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 32, height: 32))
+            avatarImageView.tag = ViewsTags.Avatar.rawValue
+
+            if let url = post.value(forKeyPath: "createdBy.avatar.url") {
+                avatarImageView.af_setImage(withURL: URL(string: url as! String)!, placeholderImage:nil, filter: AspectScaledToFillSizeWithRoundedCornersFilter(size: avatarImageView.frame.size, radius: 20.0), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+                container.addSubview(avatarImageView)
+                avatarImageView.snp.makeConstraints({ (make) in
+                    make.left.equalTo(10)
+                    make.top.equalTo(10)
+                })
+            }
+
+            let usernameLabel:UILabel = UILabel()
+            usernameLabel.tag = ViewsTags.Username.rawValue
+            usernameLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
+            usernameLabel.text = post.value(forKeyPath: "createdBy.username") as? String
+            usernameLabel.font = UIFont.systemFont(ofSize: 11.0)
+
+            let rawContentLabel:UILabel = UILabel()
+            rawContentLabel.tag = ViewsTags.RawContent.rawValue
+            rawContentLabel.numberOfLines = 4
+            rawContentLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
+            rawContentLabel.text = post.value(forKeyPath: "rawContent") as? String
+            rawContentLabel.font = UIFont.systemFont(ofSize: 11.0)
+            rawContentLabel.sizeToFit()
+
+            container.addSubview(rawContentLabel)
+            rawContentLabel.snp.makeConstraints({ (make) in
+                make.left.equalTo(container).offset(10)
+                make.right.equalTo(container).offset(-10)
+                make.top.equalTo(avatarImageView.frame.origin.y + avatarImageView.frame.size.height + 12)
+            })
+        }
+
+        return container
+    }
+    
+    func updateCellView(container:UIView, row:Int ) {
+        if let post = posts[row] as? NSDictionary {
+            let avatarImageView:UIImageView? = container.viewWithTag(ViewsTags.Avatar.rawValue) as? UIImageView
+            
+            if let url = post.value(forKeyPath: "createdBy.avatar.url") as? String {
+                avatarImageView?.af_setImage(withURL: URL(string: url)!, placeholderImage:nil, filter: AspectScaledToFillSizeWithRoundedCornersFilter(size: avatarImageView!.frame.size, radius: 20.0), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+            }
+            
+            let usernameLabel:UILabel? = container.viewWithTag(ViewsTags.Username.rawValue) as? UILabel
+            if let username = post.value(forKeyPath: "createdBy.username") as? String {
+                usernameLabel?.text = username
+            }
+
+            let rawContentLabel:UILabel? = container.viewWithTag(ViewsTags.RawContent.rawValue) as? UILabel
+            if let rawContent = post.value(forKeyPath: "rawContent") as? String {
+                rawContentLabel?.text = rawContent
+            }
+        }
+    }
+
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         if posts.count == 0 {
             return 44.0
         }
 
-        return 88.0
+        let view:UIView = prepareCellView(row: indexPath.row)
+
+        return view.frame.size.height
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -192,7 +269,14 @@ class HubchatPostsTVC: UITableViewController {
                 if view is UIActivityIndicatorView {
                     (view as! UIActivityIndicatorView).stopAnimating()
                 }
-                view.removeFromSuperview()
+            }
+            
+            if let containerView = cell.contentView.viewWithTag(ViewsTags.Root.rawValue) {
+                updateCellView(container: containerView, row:indexPath.row)
+            } else {
+                let containerView = prepareCellView(row: indexPath.row)
+                containerView.tag = ViewsTags.Root.rawValue
+                cell.contentView.addSubview(containerView)
             }
 /*
              Post text
@@ -250,5 +334,4 @@ class HubchatPostsTVC: UITableViewController {
         // Pass the selected object to the new view controller.
     }
     */
-
 }
