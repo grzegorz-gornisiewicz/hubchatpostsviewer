@@ -16,6 +16,7 @@ enum ViewsTags:Int {
     case Avatar
     case Username
     case RawContent
+    case EntityImage
 }
 
 class HubchatPostsTVC: UITableViewController {
@@ -113,7 +114,7 @@ class HubchatPostsTVC: UITableViewController {
             return 1
         }
         
-        return posts.count
+        return posts.count * 3 //one for avatar, one for content and one for images from entity
     }
     
     override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
@@ -173,9 +174,11 @@ class HubchatPostsTVC: UITableViewController {
         return headerView
     }
 
-    func prepareCellView(row:Int) -> UIView {
-        let frame:CGRect = CGRect(x: 0, y: 0, width: self.tableView.frame.size.width, height: 80.0)
+    func prepareCellView(rowInTable:Int) -> (UIView, CGFloat) {
+        var frame:CGRect = CGRect(x: 0, y: 0, width: self.tableView.frame.size.width, height: 160.0)
         let container:UIView = UIView(frame: frame)
+        var fullHeight:CGFloat = 0.0
+        let row:Int = rowInTable / 3
         /*
          Post text
          User (avatar, username)
@@ -183,79 +186,165 @@ class HubchatPostsTVC: UITableViewController {
          Upvotes
          */
         if let post = posts[row] as? NSDictionary {
-            let avatarImageView:UIImageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 32, height: 32))
-            avatarImageView.tag = ViewsTags.Avatar.rawValue
+            if (row * 3) == rowInTable {
+                let avatarImageView:UIImageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 32, height: 32))
+                avatarImageView.tag = ViewsTags.Avatar.rawValue
 
-            if let url = post.value(forKeyPath: "createdBy.avatar.url") {
-                avatarImageView.af_setImage(withURL: URL(string: url as! String)!, placeholderImage:nil, filter: AspectScaledToFillSizeWithRoundedCornersFilter(size: avatarImageView.frame.size, radius: 20.0), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
-                container.addSubview(avatarImageView)
-                avatarImageView.snp.makeConstraints({ (make) in
-                    make.left.equalTo(10)
-                    make.top.equalTo(10)
+                if let url = post.value(forKeyPath: "createdBy.avatar.url") {
+                    avatarImageView.af_setImage(withURL: URL(string: url as! String)!, placeholderImage:nil, filter: AspectScaledToFillSizeCircleFilter(size: avatarImageView.frame.size), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+                    container.addSubview(avatarImageView)
+                    avatarImageView.snp.makeConstraints({ (make) in
+                        make.left.equalTo(container).offset(12)
+                        make.top.equalTo(container).offset(8)
+                        make.bottom.equalTo(container).offset(-8)
+                        make.centerY.equalTo(container)
+                    })
+                }
+
+                let usernameLabel:UILabel = UILabel(frame:frame)
+                usernameLabel.tag = ViewsTags.Username.rawValue
+                usernameLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
+                usernameLabel.text = post.value(forKeyPath: "createdBy.username") as? String
+                usernameLabel.font = UIFont.systemFont(ofSize: 12.0)
+                container.addSubview(usernameLabel)
+                usernameLabel.snp.makeConstraints({ (make) in
+                    make.left.equalTo(container).offset(avatarImageView.frame.origin.x + avatarImageView.frame.size.width + 20)
+                    make.right.equalTo(container).offset(-12)
+                    make.centerY.equalTo(avatarImageView)
                 })
+                
+                fullHeight = 32.0 + 16.0
+                
+                //print("username, fullHeight:\(fullHeight), row:\(row), rowInTable:\(rowInTable)")
             }
+            else if (row * 3 + 1) == rowInTable
+            {
+                let rawContentLabel:UITextView = UITextView(frame:frame)
+                rawContentLabel.tag = ViewsTags.RawContent.rawValue
+                rawContentLabel.text = post.value(forKeyPath: "rawContent") as? String
+                rawContentLabel.font = UIFont.systemFont(ofSize: 11.0)
 
-            let usernameLabel:UILabel = UILabel()
-            usernameLabel.tag = ViewsTags.Username.rawValue
-            usernameLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
-            usernameLabel.text = post.value(forKeyPath: "createdBy.username") as? String
-            usernameLabel.font = UIFont.systemFont(ofSize: 11.0)
+                container.addSubview(rawContentLabel)
+                rawContentLabel.sizeToFit()
 
-            let rawContentLabel:UILabel = UILabel()
-            rawContentLabel.tag = ViewsTags.RawContent.rawValue
-            rawContentLabel.numberOfLines = 4
-            rawContentLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
-            rawContentLabel.text = post.value(forKeyPath: "rawContent") as? String
-            rawContentLabel.font = UIFont.systemFont(ofSize: 11.0)
-            rawContentLabel.sizeToFit()
+                rawContentLabel.snp.makeConstraints({ (make) in
+                    make.centerY.equalTo(container)
+                    make.topMargin.equalTo(2)
+                    make.bottomMargin.equalTo(-2)
+                    make.leftMargin.equalTo(12)
+                    make.rightMargin.equalTo(-12)
+                })
 
-            container.addSubview(rawContentLabel)
-            rawContentLabel.snp.makeConstraints({ (make) in
-                make.left.equalTo(container).offset(10)
-                make.right.equalTo(container).offset(-10)
-                make.top.equalTo(avatarImageView.frame.origin.y + avatarImageView.frame.size.height + 12)
-            })
+                fullHeight = rawContentLabel.contentSize.height + 8
+
+                print("rawContent, fullHeight:\(fullHeight), row:\(row), rowInTable:\(rowInTable)")
+            }
+            else if (row * 3 + 2) == rowInTable
+            {
+                let previewImageView:UIImageView = UIImageView(frame: frame)
+                previewImageView.tag = ViewsTags.EntityImage.rawValue
+                previewImageView.contentMode = UIViewContentMode.scaleAspectFill
+                if let images = post.value(forKeyPath: "entities.images") as? NSArray {
+                    if images.count > 0 {
+                        let image = images[0]
+                        if let url = (image as! NSDictionary).value(forKey: "cdnUrl") {
+                            previewImageView.af_setImage(withURL: URL(string: url as! String)!, placeholderImage:nil, imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+                            container.addSubview(previewImageView)
+                            previewImageView.snp.makeConstraints({ (make) in
+//                                make.left.equalTo(container).offset(12)
+//                                make.top.equalTo(container).offset(8)
+//                                make.bottom.equalTo(container).offset(-8)
+                                make.center.equalTo(container)
+                            })
+                        }
+                    }
+                }
+                fullHeight = previewImageView.frame.size.height
+                //print("entities, fullHeight:\(fullHeight), row:\(row), rowInTable:\(rowInTable)")
+            }
         }
 
-        return container
+        frame = container.frame
+        frame.size.height = fullHeight
+        container.frame = frame
+
+        return (container, fullHeight)
     }
     
-    func updateCellView(container:UIView, row:Int ) {
+    func updateCellView(container:UIView, rowInTable:Int ) ->CGFloat {
+        let row:Int = rowInTable / 3
         if let post = posts[row] as? NSDictionary {
-            let avatarImageView:UIImageView? = container.viewWithTag(ViewsTags.Avatar.rawValue) as? UIImageView
-            
-            if let url = post.value(forKeyPath: "createdBy.avatar.url") as? String {
-                avatarImageView?.af_setImage(withURL: URL(string: url)!, placeholderImage:nil, filter: AspectScaledToFillSizeWithRoundedCornersFilter(size: avatarImageView!.frame.size, radius: 20.0), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
-            }
-            
-            let usernameLabel:UILabel? = container.viewWithTag(ViewsTags.Username.rawValue) as? UILabel
-            if let username = post.value(forKeyPath: "createdBy.username") as? String {
-                usernameLabel?.text = username
-            }
+            if (row * 3) == rowInTable {
+                let avatarImageView:UIImageView? = container.viewWithTag(ViewsTags.Avatar.rawValue) as? UIImageView
 
-            let rawContentLabel:UILabel? = container.viewWithTag(ViewsTags.RawContent.rawValue) as? UILabel
-            if let rawContent = post.value(forKeyPath: "rawContent") as? String {
-                rawContentLabel?.text = rawContent
+                if let url = post.value(forKeyPath: "createdBy.avatar.url") as? String {
+                    avatarImageView?.af_setImage(withURL: URL(string: url)!, placeholderImage:nil, filter: AspectScaledToFillSizeWithRoundedCornersFilter(size: avatarImageView!.frame.size, radius: 20.0), imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+                }
+
+                let usernameLabel:UILabel? = container.viewWithTag(ViewsTags.Username.rawValue) as? UILabel
+                if let username = post.value(forKeyPath: "createdBy.username") as? String {
+                    usernameLabel?.text = username
+                }
+                return 32.0
+            }
+            else if (row * 3 + 1) == rowInTable
+            {
+                //let frame:CGRect = CGRect(x: 0, y: 0, width: self.tableView.frame.size.width, height: 80.0)
+                let rawContentLabel:UITextView? = container.viewWithTag(ViewsTags.RawContent.rawValue) as? UITextView
+                rawContentLabel?.text = post.value(forKeyPath: "rawContent") as? String
+                return rawContentLabel!.frame.size.height + 8
+            }
+            else if (row * 3 + 2) == rowInTable
+            {
+                if let previewImageView = container.viewWithTag(ViewsTags.EntityImage.rawValue) as? UIImageView {
+                    if let images = post.value(forKeyPath: "entities.images") as? NSArray {
+                        if images.count > 0 {
+                            let image = images[0]
+                            if let url = (image as! NSDictionary).value(forKey: "cdnUrl") {
+                                previewImageView.af_setImage(withURL: URL(string: url as! String)!, placeholderImage:nil, imageTransition: UIImageView.ImageTransition.crossDissolve(1.0))
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        return 0.0
     }
 
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         if posts.count == 0 {
             return 44.0
         }
+        
+        let row:Int = indexPath.row / 3
 
-        let view:UIView = prepareCellView(row: indexPath.row)
+        if let post = posts[row] as? NSDictionary {
+            if (row * 3 + 1) == indexPath.row {
+                let frame:CGRect = CGRect(x: 0, y: 0, width: self.tableView.frame.size.width, height: 80.0)
+                let rawContentLabel:UILabel = UILabel(frame:frame)
+                rawContentLabel.tag = ViewsTags.RawContent.rawValue
+                rawContentLabel.numberOfLines = 4
+                rawContentLabel.lineBreakMode = NSLineBreakMode.byTruncatingTail
+                rawContentLabel.text = post.value(forKeyPath: "rawContent") as? String
+                rawContentLabel.font = UIFont.systemFont(ofSize: 11.0)
+                rawContentLabel.sizeToFit()
+                
+                print("rawContent, fullHeight:\(rawContentLabel.frame.size.height + 8), row:\(row), rowInTable:\(indexPath.row)")
+                return rawContentLabel.frame.size.height + 8
+            }
+        }
 
-        return view.frame.size.height
+        let (_, Height) = prepareCellView(rowInTable: indexPath.row)
+
+        return Height
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "HubchatPost", for: indexPath)
-
         if posts.count == 0 {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "HubchatPost", for: indexPath)
             let indicator:UIActivityIndicatorView = UIActivityIndicatorView.init(activityIndicatorStyle: UIActivityIndicatorViewStyle.gray)
-            
+
             cell.contentView.addSubview(indicator)
 
             indicator.isHidden = false
@@ -264,31 +353,42 @@ class HubchatPostsTVC: UITableViewController {
             indicator.snp.makeConstraints { (make) -> Void in
                 make.center.equalTo(cell.contentView)
             }
+
+            return cell
         } else {
-            for view in cell.contentView.subviews {
+            var cell:UITableViewCell?
+
+            let row:Int = indexPath.row / 3
+            
+            if (row * 3) == indexPath.row {
+                cell = tableView.dequeueReusableCell(withIdentifier: "HubchatAvatarPost", for: indexPath)
+            }
+            if (row * 3 + 1) == indexPath.row {
+                cell = tableView.dequeueReusableCell(withIdentifier: "HubchatContentPost", for: indexPath)
+            }
+            if (row * 3 + 2) == indexPath.row {
+                cell = tableView.dequeueReusableCell(withIdentifier: "HubchatImagesPost", for: indexPath)
+            }
+
+            for view in (cell?.contentView.subviews)! {
                 if view is UIActivityIndicatorView {
                     (view as! UIActivityIndicatorView).stopAnimating()
                 }
             }
-            
-            if let containerView = cell.contentView.viewWithTag(ViewsTags.Root.rawValue) {
-                updateCellView(container: containerView, row:indexPath.row)
-            } else {
-                let containerView = prepareCellView(row: indexPath.row)
-                containerView.tag = ViewsTags.Root.rawValue
-                cell.contentView.addSubview(containerView)
-            }
-/*
-             Post text
-             User (avatar, username)
-             Images (from entities)
-             Upvotes
- */
-        }
 
-        return cell
+            if let containerView = cell?.contentView.viewWithTag(ViewsTags.Root.rawValue) {
+                updateCellView(container: containerView, rowInTable:indexPath.row)
+            } else {
+                let (containerView, _) = prepareCellView(rowInTable: indexPath.row)
+                containerView.tag = ViewsTags.Root.rawValue
+                cell?.contentView.addSubview(containerView)
+            }
+
+            cell?.selectionStyle = UITableViewCellSelectionStyle.none
+
+            return cell!
+        }
     }
- 
 
     /*
     // Override to support conditional editing of the table view.
